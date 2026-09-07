@@ -5,12 +5,15 @@ import numpy as np
 import re
 
 
-st.set_page_config(page_title="ARNI", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="ARNI", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 # =========================================================
 # ARNI ÜYELİK / GİRİŞ SİSTEMİ
-# Kullanıcılar GitHub koduna yazılmaz.
-# Streamlit Community Cloud > App settings > Secrets bölümünden yönetilir.
+# Kullanıcılar Streamlit Community Cloud > App settings > Secrets
+# bölümünden yönetilir.
+# Örnek:
+# [users]
+# "ARNİ" = "2010"
 # =========================================================
 import hmac
 
@@ -27,36 +30,44 @@ def _arni_login():
 
     st.markdown("""
     <style>
-    .stApp {background:#f7f9fc;}
-    .arni-login-box{
-        max-width:440px;
-        margin:8vh auto 0 auto;
-        padding:30px 28px;
+    .arni-login-shell{
+        max-width:460px;
+        margin:7vh auto 0 auto;
+        padding:32px 28px 26px;
         background:#ffffff;
-        border:1px solid #d9e2ec;
+        border:1px solid #dce4ee;
         border-radius:22px;
-        box-shadow:0 12px 36px rgba(15,23,42,.10);
+        box-shadow:0 12px 34px rgba(15,23,42,.10);
     }
     .arni-login-logo{
-        font-size:38px;
-        font-weight:800;
+        font-size:40px;
+        font-weight:900;
         text-align:center;
-        color:#0f172a;
+        color:#111827;
     }
     .arni-login-sub{
         text-align:center;
-        color:#64748b;
-        margin:6px 0 18px;
+        color:#667085;
+        font-size:16px;
+        margin-top:6px;
+        margin-bottom:18px;
+    }
+    @media (max-width: 768px){
+        .arni-login-shell{
+            margin:4vh .25rem 0 .25rem;
+            padding:26px 18px 22px;
+            border-radius:18px;
+        }
+        .arni-login-logo{font-size:34px}
     }
     </style>
-    <div class="arni-login-box">
+    <div class="arni-login-shell">
       <div class="arni-login-logo">📈 ARNI</div>
       <div class="arni-login-sub">Üye Girişi</div>
     </div>
     """, unsafe_allow_html=True)
 
     users = _arni_users()
-
     if not users:
         st.error("Üyelik sistemi henüz ayarlanmadı. Streamlit Secrets bölümüne kullanıcı eklenmeli.")
         st.stop()
@@ -81,24 +92,121 @@ def _arni_login():
 if not _arni_login():
     st.stop()
 
+
 st.markdown("""
 <style>
-:root {--bg:#05080d;--panel:#0b111b;--panel2:#101826;--border:#26364a;--text:#ffffff;--muted:#aebdce;--blue:#2f80ff;--green:#00e676;--yellow:#ffd600;--orange:#ff9800;--red:#ff1744;}
+/* iPhone / mobile görünüm */
+@media (max-width: 768px) {
+  .block-container{
+    max-width:100%!important;
+    padding:0.65rem 0.75rem 1.5rem!important;
+  }
+
+  [data-testid="stSidebar"]{
+    width:86vw!important;
+    max-width:330px!important;
+  }
+
+  h1{font-size:1.75rem!important}
+  h2{font-size:1.45rem!important}
+  h3{font-size:1.15rem!important}
+
+  .arni-hero{
+    padding:14px 16px!important;
+    border-radius:14px!important;
+    margin-bottom:10px!important;
+  }
+  .arni-title{font-size:28px!important}
+  .arni-sub{font-size:13px!important;line-height:1.35!important}
+
+  /* Streamlit kolonlarını telefonda alt alta getir */
+  [data-testid="stHorizontalBlock"]{
+    flex-direction:column!important;
+    gap:0.65rem!important;
+  }
+  [data-testid="stColumn"]{
+    width:100%!important;
+    flex:1 1 100%!important;
+    min-width:100%!important;
+  }
+
+  /* Piyasa ve hisse kartları */
+  .market-card,.stock-mini,.stock-head{
+    min-height:auto!important;
+    padding:12px 14px!important;
+    border-radius:12px!important;
+  }
+  .market-label{font-size:14px!important;margin-bottom:8px!important}
+  .market-price{font-size:25px!important}
+  .market-delta{font-size:13px!important;margin-top:8px!important}
+  .stock-mini .price{font-size:24px!important}
+  .stock-price{font-size:28px!important}
+  .stock-score{font-size:24px!important}
+
+  /* Giriş kutuları ve butonlar */
+  .stTextInput input,
+  div[data-baseweb="select"]>div{
+    min-height:46px!important;
+    font-size:16px!important; /* iPhone zoom yapmasın */
+  }
+  .stButton>button{
+    min-height:46px!important;
+    font-size:16px!important;
+  }
+
+  /* Metric kartları daha küçük */
+  [data-testid="stMetric"]{
+    min-height:88px!important;
+    padding:11px 12px!important;
+  }
+  [data-testid="stMetricValue"]{
+    font-size:1.65rem!important;
+  }
+
+  /* Grafikler taşmasın */
+  [data-testid="stVegaLiteChart"],
+  [data-testid="stArrowVegaLiteChart"]{
+    width:100%!important;
+    overflow-x:auto!important;
+  }
+
+  /* Uzun metinler taşmasın */
+  p,span,div{
+    overflow-wrap:anywhere;
+  }
+
+  /* ARNI'ye Sor alanı telefonda tek kolon */
+  .stTextInput{width:100%!important}
+}
+
+/* Daha küçük iPhone ekranları */
+@media (max-width: 430px) {
+  .block-container{padding-left:0.55rem!important;padding-right:0.55rem!important}
+  h2{font-size:1.3rem!important}
+  .market-price{font-size:23px!important}
+  .stock-price{font-size:26px!important}
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+:root{--bg:#f7f9fc;--panel:#ffffff;--panel2:#f8fafc;--border:#dce4ee;--text:#101828;--muted:#667085;--blue:#2878d8;--green:#36b37e;--watch:#4a90e2;--wait:#e58a32;--red:#e84d5b;}
 html,body,[class*="css"]{font-family:Inter,Arial,sans-serif}.stApp{background:var(--bg);color:var(--text)}
 [data-testid="stHeader"]{background:var(--bg)!important}.block-container{max-width:1540px;padding-top:.8rem;padding-bottom:2rem}
-[data-testid="stSidebar"]{background:#080d14!important;border-right:1px solid #26364a}[data-testid="stSidebar"] *{color:#f4f7fb!important}
-h1,h2,h3,h4{color:#f8fbff!important}p,label{color:#dbe5f0!important}
-.stTextInput input{min-height:48px;border-radius:11px!important;background:#f5f7fa!important;color:#101828!important}
-div[data-baseweb="select"]>div{min-height:48px;background:#f5f7fa!important;color:#101828!important;border-radius:11px!important}
-div[data-baseweb="select"] span{color:#101828!important}
-[data-testid="stMetric"]{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:14px;min-height:108px}
-[data-testid="stMetricLabel"]{color:#a9bbcf!important}[data-testid="stMetricValue"]{color:#fff!important;font-weight:800!important}[data-testid="stMetricDelta"]{font-weight:700!important}
-.stButton>button{width:100%;border-radius:11px;min-height:44px;font-weight:750}[data-testid="stAlert"]{border-radius:12px}
-.arni-hero{background:linear-gradient(135deg,#0c2138 0%,#0c1728 100%);border:1px solid #18476f;border-radius:18px;padding:18px 22px;margin-bottom:14px}
-.arni-title{font-size:34px;font-weight:900;color:#fff}.arni-sub{color:#9fb4ca;font-size:14px}
-.stock-mini{background:#0d1520;border:1px solid #26364a;border-radius:14px;padding:12px;min-height:96px}.stock-mini .sym{font-size:13px;color:#c9d6e5;font-weight:800}.stock-mini .price{font-size:22px;color:#fff;font-weight:900;margin-top:4px}.stock-mini .pos{color:#00e676;font-weight:800;margin-top:4px}.stock-mini .neg{color:#ff1744;font-weight:800;margin-top:4px}
-.stock-head{background:#0d1520;border:1px solid #26364a;border-radius:16px;padding:16px;margin-bottom:10px}.stock-name{color:#b9c9da;font-size:14px;font-weight:700}.stock-price{color:#fff;font-size:32px;font-weight:900}.stock-score{font-size:26px;color:#fff;font-weight:900}
-.signal-buy,.signal-watch,.signal-wait,.signal-sell{text-align:center;border-radius:10px;padding:10px 12px;font-weight:900;margin-top:10px}.signal-buy{background:rgba(0,230,118,.18);border:1px solid #00e676;color:#00e676}.signal-watch{background:rgba(255,152,0,.18);border:1px solid #ff9800;color:#ffb74d}.signal-wait{background:rgba(255,214,0,.15);border:1px solid #ffd600;color:#ffe45c}.signal-sell{background:rgba(255,23,68,.18);border:1px solid #ff1744;color:#ff5c77}.small-note{color:#91a6bb;font-size:12px}hr{border-color:#17344e}
+[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid var(--border)}[data-testid="stSidebar"] *{color:#172033!important}
+h1,h2,h3,h4{color:#111827!important}p,label{color:#344054!important}
+.stTextInput input{min-height:48px;border-radius:11px!important;background:#fff!important;color:#101828!important;border:1px solid #d7dee8!important}
+div[data-baseweb="select"]>div{min-height:48px;background:#fff!important;color:#101828!important;border-radius:11px!important;border:1px solid #d7dee8!important}div[data-baseweb="select"] span{color:#101828!important}
+[data-testid="stMetric"]{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;min-height:108px;box-shadow:0 2px 8px rgba(16,24,40,.04)}
+[data-testid="stMetricLabel"]{color:#667085!important}[data-testid="stMetricValue"]{color:#101828!important;font-weight:800!important}[data-testid="stMetricDelta"]{font-weight:700!important}
+.stButton>button{width:100%;border-radius:11px;min-height:44px;font-weight:750;background:#2878d8;color:#fff;border:0}[data-testid="stAlert"]{border-radius:12px}
+.arni-hero{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px 22px;margin-bottom:14px;box-shadow:0 2px 10px rgba(16,24,40,.04)}.arni-title{font-size:34px;font-weight:900;color:#123b70}.arni-sub{color:#667085;font-size:14px}
+.stock-mini{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px;min-height:96px;box-shadow:0 2px 8px rgba(16,24,40,.04)}.stock-mini .sym{font-size:13px;color:#475467;font-weight:800}.stock-mini .price{font-size:22px;color:#101828;font-weight:900;margin-top:4px}.stock-mini .pos{color:#36a676;font-weight:800;margin-top:4px}.stock-mini .neg{color:#df5360;font-weight:800;margin-top:4px}
+.stock-head{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(16,24,40,.04)}.stock-name{color:#475467;font-size:14px;font-weight:700}.stock-price{color:#101828;font-size:28px;font-weight:900}.stock-score{font-size:26px;color:#101828;font-weight:900}
+.signal-buy,.signal-watch,.signal-wait,.signal-sell{text-align:center;border-radius:10px;padding:10px 12px;font-weight:900;margin-top:10px}.signal-buy{background:#edf8f3;border:1px solid #72c9a8;color:#257a5d}.signal-watch{background:#eef5fd;border:1px solid #8db8ea;color:#356fae}.signal-wait{background:#fff5e9;border:1px solid #edb675;color:#a96120}.signal-sell{background:#fceff1;border:1px solid #ed8d97;color:#ad3946}.small-note{color:#667085;font-size:12px}hr{border-color:#dce4ee}
+.market-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 18px;min-height:132px;box-shadow:0 2px 8px rgba(16,24,40,.04)}.market-label{font-size:16px;color:#344054;margin-bottom:14px}.market-price{font-size:28px;line-height:1.1;color:#101828;font-weight:800;white-space:nowrap}.market-delta{display:inline-block;margin-top:12px;padding:4px 9px;border-radius:999px;font-size:15px;font-weight:800}.market-up{background:#dff7e8;color:#267a52}.market-down{background:#fde7e8;color:#b23c45}.market-flat{background:#eef2f6;color:#667085}
 </style>
 """, unsafe_allow_html=True)
 
@@ -166,7 +274,55 @@ with st.sidebar:
     st.divider()
     st.markdown("## 📈 ARNI");st.caption("Akıllı Borsa Analiz Asistanı");st.divider();st.markdown("### Analiz Ayarları")
     zaman_penceresi=st.slider("Zaman Aralığı (Gün)",20,365,60,5);risk_esigi=st.slider("Risk / Volatilite Eşiği",10,70,35,1)
-    st.divider();st.markdown("### Sinyal Renkleri");st.success("AL");st.warning("AL İZLE");st.info("BEKLE");st.error("ZAYIF / SAT")
+    st.divider();st.markdown("### Sinyal Renkleri")
+    st.markdown('<div class="signal-buy" style="text-align:left">🟢 &nbsp; AL</div>',unsafe_allow_html=True)
+    st.markdown('<div class="signal-watch" style="text-align:left">🔵 &nbsp; AL İZLE</div>',unsafe_allow_html=True)
+    st.markdown('<div class="signal-wait" style="text-align:left">🟠 &nbsp; BEKLE</div>',unsafe_allow_html=True)
+    st.markdown('<div class="signal-sell" style="text-align:left">🔴 &nbsp; ZAYIF / SAT</div>',unsafe_allow_html=True)
+    st.divider(); karanlik=st.toggle("🌙 Karanlık Mod", value=False, key="dark_mode")
+
+if karanlik:
+    st.markdown("""<style>
+    .stApp{background:#111827!important;color:#f8fafc!important}
+    [data-testid="stHeader"]{background:#111827!important}
+    [data-testid="stSidebar"]{background:#172033!important;border-right-color:#334155!important}
+    [data-testid="stSidebar"] *{color:#f8fafc!important}
+    h1,h2,h3,h4{color:#ffffff!important}
+    p,label,.stCaption{color:#d7e0ea!important}
+
+    .arni-hero,.stock-mini,.stock-head,.market-card,[data-testid="stMetric"]{
+        background:#1f2a3d!important;
+        border-color:#3a4b63!important;
+        box-shadow:0 2px 10px rgba(0,0,0,.18)!important
+    }
+    .arni-title,.stock-mini .price,.stock-price,.stock-score,.market-price,[data-testid="stMetricValue"]{
+        color:#ffffff!important
+    }
+    .arni-sub,.stock-mini .sym,.stock-name,.small-note,.market-label,[data-testid="stMetricLabel"]{
+        color:#cbd5e1!important
+    }
+
+    .stTextInput input,div[data-baseweb="select"]>div{
+        background:#f8fafc!important;
+        color:#111827!important;
+        border-color:#94a3b8!important
+    }
+    .stTextInput input::placeholder{color:#64748b!important;opacity:1!important}
+    div[data-baseweb="select"] span{color:#111827!important}
+
+    [data-testid="stSidebar"] .signal-buy{background:#dff4ea!important;border-color:#63c69e!important;color:#1d5f49!important}
+    [data-testid="stSidebar"] .signal-watch{background:#e5effc!important;border-color:#7aaee7!important;color:#285f9f!important}
+    [data-testid="stSidebar"] .signal-wait{background:#fff0df!important;border-color:#e3a663!important;color:#93551d!important}
+    [data-testid="stSidebar"] .signal-sell{background:#fbe5e8!important;border-color:#e87986!important;color:#9d3340!important}
+    [data-testid="stSidebar"] .signal-buy *,
+    [data-testid="stSidebar"] .signal-watch *,
+    [data-testid="stSidebar"] .signal-wait *,
+    [data-testid="stSidebar"] .signal-sell *{color:inherit!important}
+
+    .market-up{background:#dff4ea!important;color:#216b50!important}
+    .market-down{background:#fbe5e8!important;color:#a43743!important}
+    .market-flat{background:#e7edf4!important;color:#475569!important}
+    </style>""",unsafe_allow_html=True)
 
 st.markdown('<div class="arni-hero"><div class="arni-title">📈 ARNI</div><div class="arni-sub">Piyasa her zaman konuşur, ARNI senin için analiz eder.</div></div>',unsafe_allow_html=True)
 
@@ -179,9 +335,18 @@ for i,(ticker,label,unit) in enumerate(market_items):
         if isinstance(d.columns,pd.MultiIndex):d.columns=d.columns.get_level_values(0)
         if len(d)>=2:
             son=float(d["Close"].iloc[-1]);onceki=float(d["Close"].iloc[-2]);deg=((son-onceki)/onceki)*100
-            mc[i].metric(label,f"{unit}{son:,.2f}",f"{deg:+.2f}%")
-        else:mc[i].metric(label,"—")
-    except Exception:mc[i].metric(label,"—")
+            delta_class="market-up" if deg>0 else "market-down" if deg<0 else "market-flat"
+            arrow="↑" if deg>0 else "↓" if deg<0 else "→"
+            mc[i].markdown(
+                f'<div class="market-card"><div class="market-label">{label}</div>'
+                f'<div class="market-price">{unit}{son:,.2f}</div>'
+                f'<div class="market-delta {delta_class}">{arrow} {deg:+.2f}%</div></div>',
+                unsafe_allow_html=True
+            )
+        else:
+            mc[i].markdown(f'<div class="market-card"><div class="market-label">{label}</div><div class="market-price">—</div></div>',unsafe_allow_html=True)
+    except Exception:
+        mc[i].markdown(f'<div class="market-card"><div class="market-label">{label}</div><div class="market-price">—</div></div>',unsafe_allow_html=True)
 
 st.markdown("### 🔥 Popüler Hisseler")
 pop_cols=st.columns(5)
@@ -210,26 +375,35 @@ kod1=kod_yap(girdi1);kod2=kod_yap(girdi2);sonuc1,veri1=analiz_et(kod1,zaman_penc
 st.info(f"Analiz edilen hisseler: {kod1.replace('.IS','')} ↔ {kod2.replace('.IS','')}")
 
 def sonuc_karti(sonuc):
-    if sonuc is None:st.error("Veri alınamadı.");return
-    kod=sonuc["kod"];para="₺" if kod.endswith(".IS") else "$";sembol=kod.replace(".IS","")
+    if sonuc is None:
+        st.error("Veri alınamadı.")
+        return
+    kod=sonuc["kod"]; para="₺" if kod.endswith(".IS") else "$"; sembol=kod.replace(".IS","")
     cls="signal-buy" if sonuc["sinyal"]=="AL" else "signal-watch" if sonuc["sinyal"]=="AL İZLE" else "signal-wait" if sonuc["sinyal"]=="BEKLE" else "signal-sell"
-    html=(f'<div class="stock-head"><div style="display:flex;justify-content:space-between;gap:12px;">'
-          f'<div><div class="stock-name">{sembol}</div><div class="stock-price">{para}{sonuc["fiyat"]:,.2f}</div><div class="small-note">Günlük: {sonuc["gunluk"]:+.2f}%</div></div>'
+    html=(f'<div class="stock-head"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">'
+          f'<div><div class="stock-name">{sembol}</div><div class="stock-price">{para}{sonuc["fiyat"]:,.2f}</div>'
+          f'<div class="small-note">Günlük: {sonuc["gunluk"]:+.2f}%</div></div>'
           f'<div class="stock-score">{sonuc["skor"]}/100</div></div><div class="{cls}">{sonuc["sinyal"]}</div></div>')
     st.markdown(html,unsafe_allow_html=True)
-    st.caption(f'RSI {sonuc["rsi"]:.1f}  •  Destek {para}{sonuc["destek"]:,.2f}  •  Direnç {para}{sonuc["direnc"]:,.2f}  •  Hedef {para}{sonuc["hedef"]:,.2f}  •  Stop {para}{sonuc["stop"]:,.2f}')
 
-left,mid,right=st.columns([1,1,1.35])
-with left:sonuc_karti(sonuc1)
-with mid:sonuc_karti(sonuc2)
+left,right=st.columns(2)
+with left:
+    sonuc_karti(sonuc1)
 with right:
-    st.markdown("### Performans Karşılaştırması")
-    if not veri1.empty and not veri2.empty:
-        c1=veri1["Close"].dropna();c2=veri2["Close"].dropna()
-        if len(c1) and len(c2):
-            p1=((c1/float(c1.iloc[0]))-1)*100;p2=((c2/float(c2.iloc[0]))-1)*100;graf=pd.concat([p1.rename(kod1.replace(".IS","")),p2.rename(kod2.replace(".IS",""))],axis=1);st.line_chart(graf,height=360)
-        else:st.info("Grafik için yeterli veri yok.")
-    else:st.info("Grafik için veri alınamadı.")
+    sonuc_karti(sonuc2)
+
+st.markdown("### 📊 Performans Karşılaştırması")
+if not veri1.empty and not veri2.empty:
+    c1=veri1["Close"].dropna(); c2=veri2["Close"].dropna()
+    if len(c1) and len(c2):
+        p1=((c1/float(c1.iloc[0]))-1)*100
+        p2=((c2/float(c2.iloc[0]))-1)*100
+        graf=pd.concat([p1.rename(kod1.replace(".IS","")),p2.rename(kod2.replace(".IS",""))],axis=1)
+        st.line_chart(graf,height=330,use_container_width=True)
+    else:
+        st.info("Grafik için yeterli veri yok.")
+else:
+    st.info("Grafik için veri alınamadı.")
 
 st.markdown("---");st.markdown("## 🤖 ARNI'ye Sor");st.caption("Hisse senetleri hakkında sorun; teknik göstergeleri özetleyeyim.")
 q1,q2=st.columns([5,1])
