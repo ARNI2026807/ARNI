@@ -4,6 +4,10 @@ import pandas as pd
 import numpy as np
 import re
 import base64
+import pandas as pd
+import numpy as np
+import re
+import base64
 
 
 st.set_page_config(page_title="ARNI", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
@@ -236,7 +240,7 @@ div[data-baseweb="select"]>div{min-height:48px;background:#fff!important;color:#
 [data-testid="stMetric"]{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;min-height:108px;box-shadow:0 2px 8px rgba(16,24,40,.04)}
 [data-testid="stMetricLabel"]{color:#667085!important}[data-testid="stMetricValue"]{color:#101828!important;font-weight:800!important}[data-testid="stMetricDelta"]{font-weight:700!important}
 .stButton>button{width:100%;border-radius:11px;min-height:44px;font-weight:750;background:#2878d8;color:#fff;border:0}[data-testid="stAlert"]{border-radius:12px}
-.arni-hero{background:#fff;border:1px solid var(--border);border-radius:999px;padding:16px 24px;margin-bottom:14px;box-shadow:0 2px 10px rgba(16,24,40,.04)}.arni-brand-row{display:flex;align-items:center;gap:18px}.arni-brand-row img{width:125px;height:auto;display:block}.arni-brand-divider{width:1px;height:62px;background:#d9c28c;flex:0 0 1px}.arni-brand-copy{min-width:0}.arni-title{font-size:31px;font-weight:900;color:#b78631;line-height:1.05}.arni-sub{color:#9a7438;font-size:14px;margin-top:7px}
+.arni-hero{background:linear-gradient(110deg,#0b2036 0%,#0d2946 58%,#09213a 100%);border:1px solid #24547a;border-radius:999px;padding:18px 30px;margin-bottom:18px;box-shadow:0 10px 30px rgba(2,12,27,.16);overflow:hidden;position:relative}.arni-brand-row{display:grid;grid-template-columns:150px 1px minmax(430px,1fr) minmax(280px,.85fr);align-items:center;gap:28px}.arni-brand-row img{width:145px;height:auto;display:block}.arni-brand-divider{width:1px;height:88px;background:linear-gradient(180deg,transparent,#d8e5f4 18%,#d8e5f4 82%,transparent);flex:0 0 1px}.arni-brand-copy{min-width:0}.arni-title{font-size:30px;font-weight:500;color:#e7eef8;line-height:1.18;letter-spacing:.1px}.arni-title strong{color:#f4c75d;font-weight:900}.arni-sub{color:#f6f8fb;font-size:30px;font-weight:800;line-height:1.15;margin-top:5px}.arni-sub strong{color:#f4c75d}.arni-chart{position:relative;height:106px;min-width:260px;opacity:.98}.arni-bars{position:absolute;left:3%;right:7%;bottom:8px;height:72px;display:flex;align-items:flex-end;justify-content:center;gap:8px;opacity:.42}.arni-bars span{width:15px;background:linear-gradient(180deg,#147dcc,#075285);border-radius:3px 3px 0 0}.arni-line{position:absolute;left:6%;right:6%;bottom:14px;height:80px}.arni-line svg{width:100%;height:100%;overflow:visible}.arni-tagline{position:absolute;right:28px;bottom:8px;color:#c4d4e5;font-size:10px;letter-spacing:3px;font-weight:800;white-space:nowrap}
 .stock-mini{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px;min-height:96px;box-shadow:0 2px 8px rgba(16,24,40,.04)}.stock-mini .sym{font-size:13px;color:#475467;font-weight:800}.stock-mini .price{font-size:22px;color:#101828;font-weight:900;margin-top:4px}.stock-mini .pos{color:#36a676;font-weight:800;margin-top:4px}.stock-mini .neg{color:#df5360;font-weight:800;margin-top:4px}
 .stock-head{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(16,24,40,.04)}.stock-name{color:#475467;font-size:14px;font-weight:700}.stock-price{color:#101828;font-size:28px;font-weight:900}.stock-score{font-size:26px;color:#101828;font-weight:900}
 .signal-buy,.signal-watch,.signal-wait,.signal-sell{text-align:center;border-radius:10px;padding:10px 12px;font-weight:900;margin-top:10px}.signal-buy{background:#edf8f3;border:1px solid #72c9a8;color:#257a5d}.signal-watch{background:#eef5fd;border:1px solid #8db8ea;color:#356fae}.signal-wait{background:#fff5e9;border:1px solid #edb675;color:#a96120}.signal-sell{background:#fceff1;border:1px solid #ed8d97;color:#ad3946}.small-note{color:#667085;font-size:12px}hr{border-color:#dce4ee}
@@ -258,59 +262,46 @@ def kod_yap(girdi):
     if kod in ABD:return kod
     return kod if kod.endswith(".IS") else kod+".IS"
 
-@st.cache_data(ttl=15,show_spinner=False)
+@st.cache_data(ttl=60,show_spinner=False)
 def veri_getir(kod,gun=60):
-    try:
-        ticker=yf.Ticker(kod)
+    """Yahoo Finance gecici hata verirse ikinci yonteme otomatik gecis yapar."""
+    kod=str(kod).strip().upper()
+    period=f"{int(gun)}d"
 
-        # Ana günlük seri
-        df=ticker.history(period=f"{gun}d",interval="1d",auto_adjust=False,actions=False)
-        if df is None or df.empty:
-            df=yf.download(kod,period=f"{gun}d",interval="1d",progress=False,auto_adjust=False,threads=False)
+    def temizle(df):
         if df is None or df.empty:
             return pd.DataFrame()
+        df=df.copy()
         if isinstance(df.columns,pd.MultiIndex):
             df.columns=df.columns.get_level_values(0)
-        df=df.dropna(subset=["Close"]).copy()
+        gerekli={"Open","High","Low","Close"}
+        if not gerekli.issubset(set(df.columns)):
+            return pd.DataFrame()
+        return df.dropna(subset=["Close"])
 
-        # En güncel seansı intraday veriden al. Böylece kapanmış/aktif gün
-        # günlük seride henüz görünmüyorsa fiyat eski güne takılı kalmaz.
-        try:
-            intra=ticker.history(period="5d",interval="5m",auto_adjust=False,actions=False,prepost=False)
-            if intra is not None and not intra.empty:
-                intra=intra.dropna(subset=["Close"]).copy()
-                if not intra.empty:
-                    latest_day=intra.index[-1].date()
-                    day_rows=intra[["Open","High","Low","Close","Volume"]].copy()
-                    day_rows=day_rows[day_rows.index.date==latest_day]
-                    if not day_rows.empty:
-                        live_row={
-                            "Open":float(day_rows["Open"].iloc[0]),
-                            "High":float(day_rows["High"].max()),
-                            "Low":float(day_rows["Low"].min()),
-                            "Close":float(day_rows["Close"].iloc[-1]),
-                            "Volume":float(day_rows["Volume"].fillna(0).sum()),
-                        }
-                        df_dates=[x.date() for x in df.index]
-                        if latest_day in df_dates:
-                            pos=df_dates.index(latest_day)
-                            idx=df.index[pos]
-                            for col,val in live_row.items():
-                                if col in df.columns:
-                                    df.at[idx,col]=val
-                        elif latest_day>df.index[-1].date():
-                            idx=pd.Timestamp(latest_day)
-                            if getattr(df.index,"tz",None) is not None:
-                                idx=idx.tz_localize(df.index.tz)
-                            new_row={c:np.nan for c in df.columns}
-                            new_row.update({k:v for k,v in live_row.items() if k in df.columns})
-                            df.loc[idx]=new_row
-        except Exception:
-            pass
-
-        return df.sort_index().dropna(subset=["Close"])
+    # 1) Normal indirme
+    try:
+        df=temizle(yf.download(
+            kod, period=period, interval="1d", progress=False,
+            auto_adjust=False, threads=False, timeout=12
+        ))
+        if not df.empty:
+            return df
     except Exception:
-        return pd.DataFrame()
+        pass
+
+    # 2) Yahoo ayni sembol icin history yoluyla tekrar denensin.
+    # Bazen download() gecici olarak "No data found" verirken bu yol calisir.
+    try:
+        df=temizle(yf.Ticker(kod).history(
+            period=period, interval="1d", auto_adjust=False, actions=False, timeout=12
+        ))
+        if not df.empty:
+            return df
+    except Exception:
+        pass
+
+    return pd.DataFrame()
 
 def rsi_hesapla(close,period=14):
     delta=close.diff();gain=delta.clip(lower=0);loss=-delta.clip(upper=0)
@@ -398,20 +389,75 @@ if karanlik:
     [data-testid="stSidebar"] .signal-wait *,
     [data-testid="stSidebar"] .signal-sell *{color:inherit!important}
 
-    .market-up{background:#dff4ea!important;color:#216b50!important}
-    .market-down{background:#fbe5e8!important;color:#a43743!important}
-    .market-flat{background:#e7edf4!important;color:#475569!important}
+    .market-up{background:#0f6b47!important;color:#ecfff7!important;border:1px solid #28c98b!important}
+    .market-down{background:#7d2637!important;color:#fff1f3!important;border:1px solid #ff6177!important}
+    .market-flat{background:#324155!important;color:#f2f6fb!important;border:1px solid #64748b!important}
+
+    /* Koyu mod: tablo ve seçim alanları yüksek kontrast */
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrame"] > div,
+    [data-testid="stDataFrame"] iframe{
+        background:#101d2f!important;
+        border-color:#35506d!important;
+    }
+    [data-testid="stDataFrame"] *{color:#f8fbff!important}
+    [data-testid="stDataFrame"] [role="columnheader"]{
+        background:#172a42!important;
+        color:#ffffff!important;
+        font-weight:800!important;
+        border-color:#35506d!important;
+    }
+    [data-testid="stDataFrame"] [role="gridcell"]{
+        background:#0f1f33!important;
+        color:#eef5ff!important;
+        border-color:#2b4360!important;
+    }
+    [data-testid="stDataFrame"] [role="row"]:nth-child(even) [role="gridcell"]{background:#13263d!important}
+
+    /* BaseWeb tablo / multiselect / dropdown */
+    div[data-baseweb="select"]>div{background:#132b46!important;color:#ffffff!important;border:1px solid #4d6e91!important}
+    div[data-baseweb="select"] span{color:#ffffff!important}
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="popover"] [role="listbox"]{background:#13263d!important;color:#fff!important}
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="popover"] [role="option"]{color:#f8fbff!important;background:#13263d!important}
+    div[data-baseweb="popover"] [role="option"]:hover{background:#1e3a5c!important}
+
+    /* Butonlar koyu modda net görünsün */
+    .stButton>button{background:#163a5c!important;color:#ffffff!important;border:1px solid #2b5d86!important}
+    .stButton>button:hover{background:#1d4b74!important;border-color:#4a83b3!important}
     </style>""",unsafe_allow_html=True)
 
-st.markdown(f'<div class="arni-hero"><div class="arni-brand-row"><img src="data:image/png;base64,{ARNI_LOGO_B64}" alt="ARNI logo"><div class="arni-brand-divider"></div><div class="arni-brand-copy"><div class="arni-title">ARNI</div><div class="arni-sub">Piyasa her zaman konuşur, ARNI senin için analiz eder.</div></div></div></div>',unsafe_allow_html=True)
+
+st.markdown("""<style>
+@media (max-width: 1100px){.arni-brand-row{grid-template-columns:120px 1px 1fr}.arni-brand-row img{width:118px}.arni-chart{display:none}.arni-title{font-size:23px}.arni-sub{font-size:25px}}
+@media (max-width: 768px){.arni-hero{border-radius:28px!important;padding:14px 16px!important}.arni-brand-row{display:grid!important;grid-template-columns:88px 1px 1fr!important;gap:12px!important}.arni-brand-row img{width:86px!important}.arni-brand-divider{height:58px!important}.arni-title{font-size:15px!important}.arni-sub{font-size:17px!important;margin-top:3px!important}.arni-chart{display:none!important}}
+</style>""",unsafe_allow_html=True)
+st.markdown(f'''<div class="arni-hero"><div class="arni-brand-row"><img src="data:image/png;base64,{ARNI_LOGO_B64}" alt="ARNI logo"><div class="arni-brand-divider"></div><div class="arni-brand-copy"><div class="arni-title">Piyasa her zaman konuşur,</div><div class="arni-sub"><strong>ARNI</strong> senin için analiz eder.</div></div><div class="arni-chart"><div class="arni-bars"><span style="height:24%"></span><span style="height:36%"></span><span style="height:31%"></span><span style="height:48%"></span><span style="height:44%"></span><span style="height:58%"></span><span style="height:54%"></span><span style="height:70%"></span><span style="height:63%"></span><span style="height:82%"></span><span style="height:76%"></span><span style="height:96%"></span></div><div class="arni-line"><svg viewBox="0 0 360 100" preserveAspectRatio="none"><defs><filter id="arniGlow"><feGaussianBlur stdDeviation="2.1" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M6,89 C65,88 102,83 143,73 C186,63 224,50 259,34 C293,18 320,8 350,2" fill="none" stroke="#f6bd3f" stroke-width="3.2" filter="url(#arniGlow)"/><circle cx="350" cy="2" r="5" fill="#ffd86b" filter="url(#arniGlow)"/></svg></div><div class="arni-tagline">VERİ • ANALİZ • STRATEJİ</div></div></div></div>''',unsafe_allow_html=True)
+
+@st.cache_data(ttl=60,show_spinner=False)
+def piyasa_veri_getir(ticker):
+    try:
+        d=yf.download(ticker,period="5d",interval="1d",progress=False,auto_adjust=False,threads=False,timeout=12)
+        if d is not None and not d.empty:
+            if isinstance(d.columns,pd.MultiIndex):d.columns=d.columns.get_level_values(0)
+            if "Close" in d.columns:return d.dropna(subset=["Close"])
+    except Exception:
+        pass
+    try:
+        d=yf.Ticker(ticker).history(period="5d",interval="1d",auto_adjust=False,actions=False,timeout=12)
+        if d is not None and not d.empty and "Close" in d.columns:
+            return d.dropna(subset=["Close"])
+    except Exception:
+        pass
+    return pd.DataFrame()
 
 st.markdown("### Piyasa Özeti")
 market_items=[("^XU100","BIST 100",""),("USDTRY=X","Dolar / TL","₺"),("EURTRY=X","Euro / TL","₺"),("GC=F","Ons Altın","$"),("BZ=F","Brent Petrol","$")]
 mc=st.columns(5)
 for i,(ticker,label,unit) in enumerate(market_items):
     try:
-        d=yf.download(ticker,period="5d",progress=False,auto_adjust=False,threads=False)
-        if isinstance(d.columns,pd.MultiIndex):d.columns=d.columns.get_level_values(0)
+        d=piyasa_veri_getir(ticker)
         if len(d)>=2:
             son=float(d["Close"].iloc[-1]);onceki=float(d["Close"].iloc[-2]);deg=((son-onceki)/onceki)*100
             delta_class="market-up" if deg>0 else "market-down" if deg<0 else "market-flat"
@@ -484,7 +530,7 @@ if not veri1.empty and not veri2.empty:
 else:
     st.info("Grafik için veri alınamadı.")
 
-st.markdown("---");st.markdown("## 🤖 ARNI'ye Sor");st.caption("Hisse senetleri hakkında sorun; teknik göstergeleri özetleyeyim. Tüm geçerli BIST hisse kodları desteklenir.")
+st.markdown("---");st.markdown("## 🤖 ARNI'ye Sor");st.caption("Hisse senetleri hakkında sorun; teknik göstergeleri özetleyeyim.")
 q1,q2=st.columns([5,1])
 with q1:soru=st.text_input("ARNI sorusu",placeholder="Ör: ASTOR alınır mı? TUPRS gidişatı nasıl? THYAO teknik analiz...",key="arni_soru_alt",label_visibility="collapsed")
 with q2:sor_buton=st.button("Gönder",type="primary",key="arni_gonder")
@@ -493,12 +539,8 @@ if sor_buton and soru.strip():
     for isim,ticker in ISIM_SOZLUGU.items():
         if isim in lower:bulunan=ticker;break
     if bulunan is None:
-        # Her geçerli BIST kodunu kabul et; sadece sabit HISSELER listesiyle sınırlama yok.
-        # Böylece listede olmayan yeni/diğer BIST hisseleri de ARNI tarafından analiz edilir.
-        for token in re.findall(r"\b[A-Z0-9]{3,8}\b",soru.upper()):
-            if token not in {"ARNI", "ALINIR", "SATILIR", "HISSE", "HİSSE", "ANALIZ", "ANALİZ"}:
-                bulunan=token
-                break
+        for token in re.findall(r"\b[A-Z]{4,6}\b",soru.upper()):
+            if token in HISSELER or token in ABD:bulunan=token;break
     if bulunan is None:st.warning("Soruda bir hisse kodu bulamadım. Örnek: ASTOR, TUPRS, THYAO.")
     else:
         soru_kod=bulunan if bulunan in ABD else bulunan+".IS";soru_sonuc,_=analiz_et(soru_kod,zaman_penceresi,risk_esigi)
