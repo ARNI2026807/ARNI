@@ -4,143 +4,18 @@ import pandas as pd
 import numpy as np
 import re
 import base64
-import hmac
-import hashlib
-import secrets
-import sqlite3
-import json
-import os
-from pathlib import Path
-import uuid
+
 
 st.set_page_config(page_title="ARNI", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 # =========================================================
-# VERİTABANI BAŞLATIŞI VE BELLEK YÖNETİMİ
+# ARNI DİL SİSTEMİ / LANGUAGE SYSTEM
+# Analiz motoru aynı kalır; yalnızca kullanıcı arayüzü çevrilir.
 # =========================================================
-# Supabase PostgreSQL veritabanı bağlantısı
-try:
-    conn = st.connection("postgresql", type="sql")
-except Exception:
-    conn = None
-
-# Aktif oturum durum takibi
-if "arni_logged_in" not in st.session_state:
-    st.session_state.arni_logged_in = False
-
-if "arni_username" not in st.session_state:
-    st.session_state.arni_username = ""
-
-
-if "arni_user_id" not in st.session_state:
-    st.session_state.arni_user_id = ""
-
-
-# ARNI DİL SİSTEMİ
-
-# =========================================================
-# SANAL AL-SAT MOTORU FONKSİYONLARI (SUPABASE)
-# =========================================================
-def sanal_cuzdan_getir(uid):
-    if conn:
-        try:
-            df = conn.query(f"SELECT bakiye FROM public.arni_sanal_cuzdan WHERE user_id = '{uid}'", ttl=0)
-            if not df.empty:
-                return float(df.iloc[0]['bakiye'])
-            else:
-                with conn.session as session:
-                    session.execute(f"INSERT INTO public.arni_sanal_cuzdan (user_id, bakiye) VALUES ('{uid}', 100000.00)")
-                    session.commit()
-                return 100000.00
-        except Exception:
-            return 100000.00
-    return 100000.00
-
-def sanal_portfoy_getir(uid):
-    if conn:
-        try:
-            df = conn.query(f"SELECT symbol, adet, maliyet FROM public.arni_sanal_portfoy WHERE user_id = '{uid}'", ttl=0)
-            return df if not df.empty else pd.DataFrame(columns=['symbol', 'adet', 'maliyet'])
-        except Exception:
-            return pd.DataFrame(columns=['symbol', 'adet', 'maliyet'])
-
-
+st.session_state.setdefault("arni_lang", "TR")
 
 def T(tr, en):
     return en if st.session_state.get("arni_lang", "TR") == "EN" else tr
-
-# =========================================================
-# SANAL AL-SAT EKRAN ARAYÜZÜ VE PORTFÖY TABLOSU
-# =========================================================
-if st.session_state.arni_logged_in:
-    st.markdown("---")
-    st.markdown(f'<div class="arni-watch-title">🎮 {T("Sanal Al-Sat Deneme Paneli", "Paper Trading Simulation")}</div>', unsafe_allow_html=True)
-    
-    uid = st.session_state.arni_user_id
-    mevcut_bakiye = sanal_cuzdan_getir(uid)
-    portfoy_df = sanal_portfoy_getir(uid)
-    
-    c_sanal1, c_sanal2 = st.columns(2)
-    with c_sanal1:
-        st.metric(label=T("💵 Sanal Nakit Bakiye", "💵 Virtual Cash Balance"), value=f"{mevcut_bakiye:,.2f} TL")
-        
-        islem_tipi = st.radio(T("İşlem Tipi", "Transaction Type"), [T("AL", "BUY"), T("SAT", "SELL")], horizontal=True, key="sanal_islem_tipi")
-        hisse_kod = st.text_input(T("Hisse Kodu (Örn: THYAO)", "Stock Code"), value="THYAO", key="sanal_hisse_kod").upper().strip()
-        hisse_adet = st.number_input(T("Adet / Lot", "Quantity"), min_value=1, value=10, step=1, key="sanal_hisse_adet")
-        
-        if st.button(T("🚀 İşlemi Onayla", "🚀 Confirm Trade"), type="primary", use_container_width=True, key="sanal_onay_btn"):
-            try:
-                ticker = yf.Ticker(f"{hisse_kod}.IS")
-                anlik_fiyat = float(ticker.history(period="1d")['Close'].iloc[-1])
-                toplam_tutar = hisse_adet * anlik_fiyat
-                
-                if islem_tipi in [T("AL", "BUY"), "AL", "BUY"]:
-                    if toplam_tutar > mevcut_bakiye:
-                        st.error(T("🚨 Yetersiz sanal bakiye!", "🚨 Insufficient virtual balance!"))
-                    else:
-                        yeni_bakiye = mevcut_bakiye - toplam_tutar
-                        with conn.session as session:
-                            session.execute(f"UPDATE public.arni_sanal_cuzdan SET bakiye = {yeni_bakiye} WHERE user_id = '{uid}'")
-                            session.execute(f"""
-                                INSERT INTO public.arni_sanal_portfoy (user_id, symbol, adet, maliyet) 
-                                VALUES ('{uid}', '{hisse_kod}', {hisse_adet}, {anlik_fiyat})
-                                ON CONFLICT (user_id, symbol) DO UPDATE SET 
-                                maliyet = ((public.arni_sanal_portfoy.maliyet * public.arni_sanal_portfoy.adet) + ({toplam_tutar})) / (public.arni_sanal_portfoy.adet + {hisse_adet}),
-                                adet = public.arni_sanal_portfoy.adet + {hisse_adet}
-                            """)
-                            session.commit()
-                        st.success(f"🎉 {hisse_adet} lot {hisse_kod}, {anlik_fiyat:.2f} TL fiyattan sanal portföye eklendi!")
-                        st.rerun()
-                        
-                elif islem_tipi in [T("SAT", "SELL"), "SAT", "SELL"]:
-                    if portfoy_df.empty:
-                        st.error(T("🚨 Portföyünüzde hiç hisse bulunmuyor!", "🚨 Your portfolio is empty!"))
-                    else:
-                        hisse_kontrol = portfoy_df[portfoy_df['symbol'] == hisse_kod]
-                        if hisse_kontrol.empty or float(hisse_kontrol.iloc['adet']) < hisse_adet:
-                            st.error(T("🚨 Portföyünüzde yeterli adet bulunmuyor!", "🚨 Insufficient shares in portfolio!"))
-                        else:
-                            yeni_bakiye = mevcut_bakiye + toplam_tutar
-                            mevcut_adet = float(hisse_kontrol.iloc['adet'])
-                            with conn.session as session:
-                                session.execute(f"UPDATE public.arni_sanal_cuzdan SET bakiye = {yeni_bakiye} WHERE user_id = '{uid}'")
-                                if mevcut_adet == hisse_adet:
-                                    session.execute(f"DELETE FROM public.arni_sanal_portfoy WHERE user_id = '{uid}' AND symbol = '{hisse_kod}'")
-                                else:
-                                    session.execute(f"UPDATE public.arni_sanal_portfoy SET adet = adet - {hisse_adet} WHERE user_id = '{uid}' AND symbol = '{hisse_kod}'")
-                                session.commit()
-                            st.success(f"🎉 {hisse_adet} lot {hisse_kod}, {anlik_fiyat:.2f} TL fiyattan sanal olarak satıldı!")
-                            st.rerun()
-            except Exception:
-                st.error(T("🚨 Hisse fiyatı alınamadı! Lütfen kodu doğru girdiğinizden emin olun (Örn: ASELS).", "🚨 Failed to fetch stock price."))
-                
-    with c_sanal2:
-        st.markdown(f"**💼 {T('Mevcut Sanal Portföy Durumunuz', 'Your Virtual Portfolio Status')}**")
-        if portfoy_df.empty:
-            st.info(T("Henüz sanal alım-satım işleminiz bulunmuyor. Sol taraftan ilk denemenizi yapabilirsiniz!", "No virtual trades yet."))
-        else:
-            st.dataframe(portfoy_df, hide_index=True, use_container_width=True)
-
 
 def signal_text(sinyal):
     if st.session_state.get("arni_lang", "TR") != "EN":
@@ -158,8 +33,7 @@ def smart_money_text(value):
     return {
         "GÜÇLÜ GİRİŞ": "STRONG INFLOW",
         "POZİTİF": "POSITIVE",
-        "KARIŞIK": "MIXED",
-        "VERİ ZAYIF": "WEAK DATA",
+        "NÖTR": "NEUTRAL",
         "ZAYIF": "WEAK",
         "GÜÇLÜ ÇIKIŞ": "STRONG OUTFLOW",
     }.get(value, value)
@@ -170,106 +44,24 @@ ARNI_BANNER_B64 = "iVBORw0KGgoAAAANSUhEUgAABL0AAACOCAYAAADU4HqxAAAAAXNSR0IArs4c6
 
 # =========================================================
 # ARNI ÜYELİK / GİRİŞ SİSTEMİ
-# Yeni üyeler SQLite veritabanına kaydedilir. Mevcut Secrets kullanıcıları korunur.
-# Cloud yeniden dağıtımlarında kalıcılık için ARNI_DB_PATH kalıcı diske bağlanmalıdır.
+# Kullanıcılar Streamlit Community Cloud > App settings > Secrets
+# bölümünden yönetilir.
 # Örnek:
 # [users]
 # "ARNİ" = "2010"
 # =========================================================
 import hmac
-import hashlib
-import secrets
-import sqlite3
-import json
-import os
-from pathlib import Path
-
-# ARNI_DB_PATH kalıcı bir diske yöneltilebilir. Veritabanını Git'e eklemeyin.
-def _arni_db():
-    path = Path(os.environ.get("ARNI_DB_PATH", str(Path(__file__).resolve().parent / "arni_data" / "members.sqlite3")))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(str(path), timeout=15)
-    db.execute("CREATE TABLE IF NOT EXISTS members (username TEXT PRIMARY KEY, salt TEXT NOT NULL, digest TEXT NOT NULL)")
-    db.execute("CREATE TABLE IF NOT EXISTS watchlists (username TEXT PRIMARY KEY, symbols TEXT NOT NULL)")
-    db.commit()
-    return db
 
 def _arni_users():
-    # Mevcut giriş hesabı ve Streamlit Secrets kullanıcıları korunur.
+    # Varsayılan yerel giriş: Codespaces/yerel çalıştırmada da üyelik ekranı çalışsın.
+    # Streamlit Secrets içinde [users] tanımlıysa oradaki kullanıcılar da eklenir/üzerine yazılır.
     users = {"ARNI": "2010"}
     try:
-        users.update(dict(st.secrets.get("users", {})))
+        secret_users = st.secrets.get("users", {})
+        users.update(dict(secret_users))
     except Exception:
         pass
     return users
-
-def _arni_password_digest(password, salt):
-    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 600000).hex()
-
-def _arni_register(username, password):
-    username = username.strip()
-    if not re.fullmatch(r"[\w.-]{3,40}", username):
-        return False, T("Kullanıcı adı 3–40 karakter olmalı; harf, rakam, nokta, tire veya alt çizgi kullanın.", "Use 3–40 letters, numbers, dots, hyphens or underscores for your username.")
-    if not 8 <= len(password) <= 128:
-        return False, T("Şifre 8–128 karakter olmalı.", "Password must contain 8–128 characters.")
-    if username in _arni_users():
-        return False, T("Bu kullanıcı adı kullanılıyor.", "This username is already in use.")
-    salt = secrets.token_hex(16)
-    digest = _arni_password_digest(password, salt)
-    db = _arni_db()
-    try:
-        with db:
-            db.execute("INSERT INTO members VALUES (?, ?, ?)", (username, salt, digest))
-            db.execute("INSERT INTO watchlists VALUES (?, ?)", (username, "[]"))
-    except sqlite3.IntegrityError:
-        return False, T("Bu kullanıcı adı kullanılıyor.", "This username is already in use.")
-    finally:
-        db.close()
-    return True, T("Hesabınız oluşturuldu. Giriş Yap sekmesinden giriş yapabilirsiniz.", "Account created. You can now log in using the Log In tab.")
-
-def _arni_authenticate(username, password):
-    if len(password) > 128:
-        return False
-    expected = _arni_users().get(username)
-    if expected is not None:
-        return hmac.compare_digest(str(expected).encode("utf-8"), password.encode("utf-8"))
-    db = _arni_db()
-    try:
-        row = db.execute("SELECT salt, digest FROM members WHERE username = ?", (username,)).fetchone()
-    finally:
-        db.close()
-    salt = row[0] if row else "00" * 16
-    digest = _arni_password_digest(password, salt)
-    return row is not None and hmac.compare_digest(row[1], digest)
-
-def _arni_load_watchlist(username):
-    db = _arni_db()
-    try:
-        with db:
-            initial = ["ASTOR", "TUPRS", "THYAO", "SISE", "ISCTR"] if username in _arni_users() else []
-            db.execute("INSERT OR IGNORE INTO watchlists VALUES (?, ?)", (username, json.dumps(initial)))
-        row = db.execute("SELECT symbols FROM watchlists WHERE username = ?", (username,)).fetchone()
-        return json.loads(row[0])
-    finally:
-        db.close()
-
-def _arni_save_watchlist(symbols):
-    if not st.session_state.get("arni_logged_in"):
-        raise PermissionError("Login required")
-    username = st.session_state["arni_username"]
-    db = _arni_db()
-    try:
-        with db:
-            db.execute("INSERT OR REPLACE INTO watchlists VALUES (?, ?)", (username, json.dumps(list(dict.fromkeys(symbols)))))
-    finally:
-        db.close()
-    st.session_state["takip_listesi"] = list(dict.fromkeys(symbols))
-
-def _arni_clear_member_state():
-    # Aynı tarayıcıda sonraki üyeye önceki üyenin seçimlerini taşımayın.
-    for key in list(st.session_state):
-        if key.startswith(("takip_", "kurum_")) or key in {"arni_live_watch_symbols", "select1", "select2", "manual1", "manual2", "stock1", "stock2", "arni_soru_alt_secim"}:
-            del st.session_state[key]
 
 def _arni_login():
     if st.session_state.get("arni_logged_in", False):
@@ -308,40 +100,26 @@ def _arni_login():
     </div>
     """, unsafe_allow_html=True)
 
-    tab_giris, tab_kayit = st.tabs([T("🔑 Giriş Yap", "🔑 Log In"), T("📝 Yeni Üye Kaydı", "📝 Sign Up")])
-    with tab_giris:
-        with st.form("arni_login_form", clear_on_submit=True):
-            username = st.text_input(T("Kullanıcı adı", "Username"))
-            password = st.text_input(T("Şifre", "Password"), type="password")
-            submitted = st.form_submit_button(T("Giriş Yap", "Log In"), type="primary", use_container_width=True)
-        if submitted:
-            try:
-                if _arni_authenticate(username.strip(), password):
-                    _arni_clear_member_state()
-                    st.session_state["arni_logged_in"] = True
-                    st.session_state["arni_username"] = username.strip()
-                    st.session_state["show_login"] = False
-                    st.rerun()
-                else:
-                    st.error(T("Kullanıcı adı veya şifre yanlış.", "Incorrect username or password."))
-            except (sqlite3.Error, OSError):
-                st.error(T("Üye kayıtlarına şu anda erişilemiyor. Lütfen tekrar deneyin.", "Member records are unavailable. Please try again."))
-    with tab_kayit:
-        with st.form("arni_register_form", clear_on_submit=True):
-            new_user = st.text_input(T("Yeni kullanıcı adı", "New username"))
-            new_password = st.text_input(T("Yeni şifre (en az 8 karakter)", "New password (at least 8 characters)"), type="password")
-            confirmation = st.text_input(T("Şifre tekrar", "Confirm password"), type="password")
-            register = st.form_submit_button(T("Kayıt Ol", "Sign Up"), type="primary", use_container_width=True)
-        if register:
-            if new_password != confirmation:
-                st.error(T("Şifreler eşleşmiyor.", "Passwords do not match."))
-            else:
-                try:
-                    success, message = _arni_register(new_user, new_password)
-                    (st.success if success else st.error)(message)
-                except (sqlite3.Error, OSError):
-                    st.error(T("Hesabınız kaydedilemedi. Lütfen tekrar deneyin.", "Your account could not be saved. Please try again."))
-    st.caption(T("🔒 Her üyenin takip listesi kendi hesabına kaydedilir.", "🔒 Each member's watchlist is saved to their own account."))
+    users = _arni_users()
+    if not users:
+        st.error(T("Üyelik sistemi henüz ayarlanmadı. Streamlit Secrets bölümüne kullanıcı eklenmeli.", "Membership system is not configured yet. Add users in Streamlit Secrets."))
+        st.stop()
+
+    with st.form("arni_login_form", clear_on_submit=False):
+        username = st.text_input(T("Kullanıcı adı", "Username"), placeholder=T("Kullanıcı adınızı girin", "Enter your username"))
+        password = st.text_input(T("Şifre", "Password"), type="password", placeholder=T("Şifrenizi girin", "Enter your password"))
+        submitted = st.form_submit_button(T("Giriş Yap", "Log In"), type="primary", width="stretch")
+
+    if submitted:
+        expected = users.get(username.strip())
+        if expected is not None and hmac.compare_digest(str(expected), str(password)):
+            st.session_state["arni_logged_in"] = True
+            st.session_state["arni_username"] = username.strip()
+            st.rerun()
+        else:
+            st.error(T("Kullanıcı adı veya şifre yanlış.", "Incorrect username or password."))
+
+    st.caption(T("🔒 ARNI yalnızca yetkili üyeler içindir.", "🔒 ARNI is for authorized members only."))
     return False
 
 # Uygulama ilk açılışta herkese açık canlı piyasa ekranını gösterir.
@@ -749,7 +527,6 @@ with st.sidebar:
     if st.session_state.get("arni_logged_in", False):
         st.caption(f"👤 {T('Üye', 'Member')}: **{st.session_state.get('arni_username','ARNI')}**")
         if st.button(T("🚪 Çıkış Yap", "🚪 Log Out"), width="stretch", key="arni_logout"):
-            _arni_clear_member_state()
             st.session_state["arni_logged_in"] = False
             st.session_state["arni_username"] = ""
             st.session_state["show_login"] = False
@@ -959,9 +736,6 @@ st.caption(T(
 ))
 
 _CANLI_HISSELER = ["ASELS","TUPRS","BIMAS","THYAO","AKBNK","EREGL","GARAN","ISCTR","KCHOL","SISE","ASTOR","SAHOL","PETKM","TAVHL","PGSUS","MGROS","HALKB","AEFES","CCOLA","KARSN"]
-
-# Hisse karşılaştırması, canlı hisse seçim alanının üstünde gösterilir.
-_arni_compare_container = st.container()
 
 live_c1, live_c2 = st.columns([3, 1])
 with live_c1:
@@ -1336,11 +1110,8 @@ st.markdown("""
 .arni-foot{display:flex;justify-content:space-between;gap:12px;color:#68758d;font-size:12px;margin:10px 2px 3px;flex-wrap:wrap}
 </style>""",unsafe_allow_html=True)
 st.markdown(f'<div class="arni-watch-title">📊 {T("Takip Listesi","Watchlist")}</div>',unsafe_allow_html=True)
-try:
-    st.session_state["takip_listesi"] = _arni_load_watchlist(st.session_state["arni_username"])
-except (sqlite3.Error, OSError, ValueError):
-    st.error(T("Takip listeniz yüklenemedi. Lütfen tekrar deneyin.", "Your watchlist could not be loaded. Please try again."))
-    st.stop()
+if "takip_listesi" not in st.session_state: st.session_state["takip_listesi"]=["ASTOR","TUPRS","THYAO","SISE","ISCTR"]
+st.session_state["takip_listesi"]=[k for k in st.session_state["takip_listesi"] if bist_kodu_gecerli_mi(k)]
 
 # Takip listesine hisse ekleme — Karşılaştırma ekranındaki gibi aranabilir seçim alanı.
 ekle_c1, ekle_c2 = st.columns([4.5, 1.2])
@@ -1375,11 +1146,7 @@ if ekle_tiklandi:
     elif yeni_kod in st.session_state["takip_listesi"]:
         st.info(T(f"{yeni_kod} zaten takip listesinde.", f"{yeni_kod} is already in the watchlist."))
     elif bist_kodu_gecerli_mi(yeni_kod):
-        try:
-            _arni_save_watchlist(st.session_state["takip_listesi"] + [yeni_kod])
-        except (sqlite3.Error, OSError):
-            st.error(T("Hisse kaydedilemedi. Lütfen tekrar deneyin.", "Stock could not be saved. Please try again."))
-            st.stop()
+        st.session_state["takip_listesi"].append(yeni_kod)
         hisse_listesine_ekle(yeni_kod)
         st.rerun()
     else:
@@ -1389,12 +1156,7 @@ if st.session_state["takip_listesi"]:
     st.markdown(f'<div style="font-weight:800;color:#44516a;margin:8px 0 5px">➖ {T("Listeden Çıkar","Remove from List")}</div>',unsafe_allow_html=True)
     silinecek=st.multiselect(T("Hisse seçin...","Select stock..."),st.session_state["takip_listesi"],key="takip_sil_sec",label_visibility="collapsed",placeholder=T("Çıkarmak istediğin hisseleri seç...","Select stocks to remove..."))
     if silinecek:
-        try:
-            _arni_save_watchlist([x for x in st.session_state["takip_listesi"] if x not in silinecek])
-        except (sqlite3.Error, OSError):
-            st.error(T("Değişiklik kaydedilemedi. Lütfen tekrar deneyin.", "Change could not be saved. Please try again."))
-            st.stop()
-        st.rerun()
+        st.session_state["takip_listesi"]=[x for x in st.session_state["takip_listesi"] if x not in silinecek]; st.rerun()
     takip_sonuclar=[]
     for sembol in st.session_state["takip_listesi"]:
         sonuc,_=analiz_et(sembol+".IS",zaman_penceresi,risk_esigi); takip_sonuclar.append((sembol,sonuc))
@@ -1416,77 +1178,76 @@ if st.session_state["takip_listesi"]:
     st.markdown(table,unsafe_allow_html=True)
 else: st.info(T("Takip listesi boş.","Watchlist is empty."))
 
-with _arni_compare_container:
-    st.markdown("---");st.markdown(T("## ⚖️ Hisse Karşılaştırma", "## ⚖️ Stock Comparison"))
-    if "stock1" not in st.session_state:st.session_state.stock1="SAHOL"
-    if "stock2" not in st.session_state:st.session_state.stock2="SISE"
+st.markdown("---");st.markdown(T("## ⚖️ Hisse Karşılaştırma", "## ⚖️ Stock Comparison"))
+if "stock1" not in st.session_state:st.session_state.stock1="SAHOL"
+if "stock2" not in st.session_state:st.session_state.stock2="SISE"
 
-    s1,s2=st.columns(2)
-    with s1:
-        secim1=st.selectbox(T("1. Hisse", "1st Stock"),HISSELER,index=HISSELER.index(st.session_state.stock1),key="select1")
-        elle1=st.text_input(T("Veya kod / isim yaz", "Or enter code / name"),placeholder=T("Örnek: ASTOR, TUPRS", "Example: ASTOR, TUPRS"),key="manual1")
-    with s2:
-        secim2=st.selectbox(T("2. Hisse", "2nd Stock"),HISSELER,index=HISSELER.index(st.session_state.stock2),key="select2")
-        elle2=st.text_input(T("Veya ikinci kod / isim yaz", "Or enter second code / name"),placeholder=T("Örnek: ISCTR, BIMAS", "Example: ISCTR, BIMAS"),key="manual2")
+s1,s2=st.columns(2)
+with s1:
+    secim1=st.selectbox(T("1. Hisse", "1st Stock"),HISSELER,index=HISSELER.index(st.session_state.stock1),key="select1")
+    elle1=st.text_input(T("Veya kod / isim yaz", "Or enter code / name"),placeholder=T("Örnek: ASTOR, TUPRS", "Example: ASTOR, TUPRS"),key="manual1")
+with s2:
+    secim2=st.selectbox(T("2. Hisse", "2nd Stock"),HISSELER,index=HISSELER.index(st.session_state.stock2),key="select2")
+    elle2=st.text_input(T("Veya ikinci kod / isim yaz", "Or enter second code / name"),placeholder=T("Örnek: ISCTR, BIMAS", "Example: ISCTR, BIMAS"),key="manual2")
 
-    girdi1=elle1.strip() if elle1.strip() else secim1;girdi2=elle2.strip() if elle2.strip() else secim2
-    # Manuel yazılan kodlar sabit listeyle sınırlanmaz; canlı BIST doğrulaması yapılır.
-    raw1=re.sub(r"[^A-Z0-9]","",str(girdi1).upper())
-    raw2=re.sub(r"[^A-Z0-9]","",str(girdi2).upper())
-    raw1=ESKI_KOD_HARITASI.get(raw1,raw1)
-    raw2=ESKI_KOD_HARITASI.get(raw2,raw2)
-    if raw1 and raw1 not in ABD: hisse_listesine_ekle(raw1)
-    if raw2 and raw2 not in ABD: hisse_listesine_ekle(raw2)
-    kod1=kod_yap(raw1);kod2=kod_yap(raw2)
-    if raw1 == raw2:
-        st.warning(T("Karşılaştırmak için farklı bir hisse seçin.", "Select two different stocks to compare."))
-        sonuc1,veri1=analiz_et(kod1,zaman_penceresi,risk_esigi)
-        sonuc2,veri2=None,pd.DataFrame()
+girdi1=elle1.strip() if elle1.strip() else secim1;girdi2=elle2.strip() if elle2.strip() else secim2
+# Manuel yazılan kodlar sabit listeyle sınırlanmaz; canlı BIST doğrulaması yapılır.
+raw1=re.sub(r"[^A-Z0-9]","",str(girdi1).upper())
+raw2=re.sub(r"[^A-Z0-9]","",str(girdi2).upper())
+raw1=ESKI_KOD_HARITASI.get(raw1,raw1)
+raw2=ESKI_KOD_HARITASI.get(raw2,raw2)
+if raw1 and raw1 not in ABD: hisse_listesine_ekle(raw1)
+if raw2 and raw2 not in ABD: hisse_listesine_ekle(raw2)
+kod1=kod_yap(raw1);kod2=kod_yap(raw2)
+if raw1 == raw2:
+    st.warning(T("Karşılaştırmak için farklı bir hisse seçin.", "Select two different stocks to compare."))
+    sonuc1,veri1=analiz_et(kod1,zaman_penceresi,risk_esigi)
+    sonuc2,veri2=None,pd.DataFrame()
+else:
+    sonuc1,veri1=analiz_et(kod1,zaman_penceresi,risk_esigi)
+    sonuc2,veri2=analiz_et(kod2,zaman_penceresi,risk_esigi)
+if str(girdi1).strip().upper()=="ALMAD" or str(girdi2).strip().upper()=="ALMAD":
+    st.info(T("ℹ️ ALMAD eski kod → yeni kod RUZYE olarak kullanılıyor.", "ℹ️ ALMAD is an old code → RUZYE is used instead."))
+st.info(f"{T('Analiz edilen hisseler', 'Stocks analyzed')}: {kod1.replace('.IS','')} ↔ {kod2.replace('.IS','')}")
+
+def sonuc_karti(sonuc):
+    if sonuc is None:
+        st.error(T("Bu hisse için veri alınamadı veya kod geçersiz.", "No market data was found for this stock or the code is invalid."))
+        return
+    kod=sonuc["kod"]; para="₺" if kod.endswith(".IS") else "$"; sembol=kod.replace(".IS","")
+    sinyal=sonuc["sinyal"]
+    cls="compare-buy" if sinyal=="AL" else "compare-watch" if sinyal=="AL İZLE" else "compare-wait" if sinyal=="BEKLE" else "compare-sell"
+    gunluk=float(sonuc["gunluk"]); gunluk_renk="#067647" if gunluk>0 else "#b42318" if gunluk<0 else "#667085"
+    skor=int(sonuc["skor"]); bar=max(0,min(100,skor))
+    daily_cls="compare-daily-up" if gunluk>0 else "compare-daily-down" if gunluk<0 else "compare-daily-flat"
+    daily_icon="↑" if gunluk>0 else "↓" if gunluk<0 else "•"
+    html=(f'<div class="compare-card">'
+          f'<div class="compare-title-row"><div class="compare-title-left">{_compare_logo_html(sembol)}<div><div class="compare-symbol">{sembol}</div><div class="compare-market">BIST {T("Hissesi", "Stock")}</div></div></div></div>'
+          f'<div class="compare-mini-grid">'
+          f'<div class="compare-mini compare-price-box"><div class="compare-mini-label">{T("Fiyat", "Price")}</div><div class="compare-mini-value">{para}{sonuc["fiyat"]:,.2f}</div><div class="compare-daily-pill {daily_cls}">{daily_icon} {gunluk:+.2f}%</div></div>'
+          f'<div class="compare-mini compare-tech-box"><div class="compare-mini-label">ARNI {T("Teknik Skoru", "Technical Score")}</div><div class="compare-mini-value">{skor}/100</div><div class="compare-bar"><span style="width:{bar}%"></span></div></div>'
+          f'<div class="compare-mini compare-point-box"><div class="compare-mini-label">ARNI {T("Puanı", "Score")}</div><div class="compare-mini-value">{skor/10:.1f}/10</div><div class="compare-bar"><span style="width:{bar}%"></span></div></div>'
+          f'</div><div class="compare-signal {cls}">🎯 {signal_text(sinyal)}</div></div>')
+    st.markdown(html,unsafe_allow_html=True)
+
+left,right=st.columns(2)
+with left:
+    sonuc_karti(sonuc1)
+with right:
+    sonuc_karti(sonuc2)
+
+st.markdown(T("### 📊 Performans Karşılaştırması", "### 📊 Performance Comparison"))
+if not veri1.empty and not veri2.empty:
+    c1=veri1["Close"].dropna(); c2=veri2["Close"].dropna()
+    if len(c1) and len(c2):
+        p1=((c1/float(c1.iloc[0]))-1)*100
+        p2=((c2/float(c2.iloc[0]))-1)*100
+        graf=pd.concat([p1.rename(kod1.replace(".IS","")),p2.rename(kod2.replace(".IS",""))],axis=1)
+        st.line_chart(graf,height=330,width="stretch")
     else:
-        sonuc1,veri1=analiz_et(kod1,zaman_penceresi,risk_esigi)
-        sonuc2,veri2=analiz_et(kod2,zaman_penceresi,risk_esigi)
-    if str(girdi1).strip().upper()=="ALMAD" or str(girdi2).strip().upper()=="ALMAD":
-        st.info(T("ℹ️ ALMAD eski kod → yeni kod RUZYE olarak kullanılıyor.", "ℹ️ ALMAD is an old code → RUZYE is used instead."))
-    st.info(f"{T('Analiz edilen hisseler', 'Stocks analyzed')}: {kod1.replace('.IS','')} ↔ {kod2.replace('.IS','')}")
-
-    def sonuc_karti(sonuc):
-        if sonuc is None:
-            st.error(T("Bu hisse için veri alınamadı veya kod geçersiz.", "No market data was found for this stock or the code is invalid."))
-            return
-        kod=sonuc["kod"]; para="₺" if kod.endswith(".IS") else "$"; sembol=kod.replace(".IS","")
-        sinyal=sonuc["sinyal"]
-        cls="compare-buy" if sinyal=="AL" else "compare-watch" if sinyal=="AL İZLE" else "compare-wait" if sinyal=="BEKLE" else "compare-sell"
-        gunluk=float(sonuc["gunluk"]); gunluk_renk="#067647" if gunluk>0 else "#b42318" if gunluk<0 else "#667085"
-        skor=int(sonuc["skor"]); bar=max(0,min(100,skor))
-        daily_cls="compare-daily-up" if gunluk>0 else "compare-daily-down" if gunluk<0 else "compare-daily-flat"
-        daily_icon="↑" if gunluk>0 else "↓" if gunluk<0 else "•"
-        html=(f'<div class="compare-card">'
-              f'<div class="compare-title-row"><div class="compare-title-left">{_compare_logo_html(sembol)}<div><div class="compare-symbol">{sembol}</div><div class="compare-market">BIST {T("Hissesi", "Stock")}</div></div></div></div>'
-              f'<div class="compare-mini-grid">'
-              f'<div class="compare-mini compare-price-box"><div class="compare-mini-label">{T("Fiyat", "Price")}</div><div class="compare-mini-value">{para}{sonuc["fiyat"]:,.2f}</div><div class="compare-daily-pill {daily_cls}">{daily_icon} {gunluk:+.2f}%</div></div>'
-              f'<div class="compare-mini compare-tech-box"><div class="compare-mini-label">ARNI {T("Teknik Skoru", "Technical Score")}</div><div class="compare-mini-value">{skor}/100</div><div class="compare-bar"><span style="width:{bar}%"></span></div></div>'
-              f'<div class="compare-mini compare-point-box"><div class="compare-mini-label">ARNI {T("Puanı", "Score")}</div><div class="compare-mini-value">{skor/10:.1f}/10</div><div class="compare-bar"><span style="width:{bar}%"></span></div></div>'
-              f'</div><div class="compare-signal {cls}">🎯 {signal_text(sinyal)}</div></div>')
-        st.markdown(html,unsafe_allow_html=True)
-
-    left,right=st.columns(2)
-    with left:
-        sonuc_karti(sonuc1)
-    with right:
-        sonuc_karti(sonuc2)
-
-    st.markdown(T("### 📊 Performans Karşılaştırması", "### 📊 Performance Comparison"))
-    if not veri1.empty and not veri2.empty:
-        c1=veri1["Close"].dropna(); c2=veri2["Close"].dropna()
-        if len(c1) and len(c2):
-            p1=((c1/float(c1.iloc[0]))-1)*100
-            p2=((c2/float(c2.iloc[0]))-1)*100
-            graf=pd.concat([p1.rename(kod1.replace(".IS","")),p2.rename(kod2.replace(".IS",""))],axis=1)
-            st.line_chart(graf,height=330,width="stretch")
-        else:
-            st.info(T("Grafik için yeterli veri yok.", "Not enough data for the chart."))
-    else:
-        st.info(T("Grafik için veri alınamadı.", "Chart data could not be retrieved."))
+        st.info(T("Grafik için yeterli veri yok.", "Not enough data for the chart."))
+else:
+    st.info(T("Grafik için veri alınamadı.", "Chart data could not be retrieved."))
 
 st.markdown("---")
 st.markdown(T("## 🏦 Kurum / Akıllı Para", "## 🏦 Institution / Smart Money"))
