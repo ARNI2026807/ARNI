@@ -80,7 +80,7 @@ if st.session_state.arni_logged_in:
     mevcut_bakiye = sanal_cuzdan_getir(uid)
     portfoy_df = sanal_portfoy_getir(uid)
     
-    c_sanal1, c_sanal2 = st.columns()
+    c_sanal1, c_sanal2 = st.columns(2)
     with c_sanal1:
         st.metric(label=T("💵 Sanal Nakit Bakiye", "💵 Virtual Cash Balance"), value=f"{mevcut_bakiye:,.2f} TL")
         
