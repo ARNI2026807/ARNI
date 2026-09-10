@@ -38,8 +38,109 @@ if "arni_user_id" not in st.session_state:
 
 # ARNI DİL SİSTEMİ
 
+# =========================================================
+# SANAL AL-SAT MOTORU FONKSİYONLARI (SUPABASE)
+# =========================================================
+def sanal_cuzdan_getir(uid):
+    if conn:
+        try:
+            df = conn.query(f"SELECT bakiye FROM public.arni_sanal_cuzdan WHERE user_id = '{uid}'", ttl=0)
+            if not df.empty:
+                return float(df.iloc[0]['bakiye'])
+            else:
+                with conn.session as session:
+                    session.execute(f"INSERT INTO public.arni_sanal_cuzdan (user_id, bakiye) VALUES ('{uid}', 100000.00)")
+                    session.commit()
+                return 100000.00
+        except Exception:
+            return 100000.00
+    return 100000.00
+
+def sanal_portfoy_getir(uid):
+    if conn:
+        try:
+            df = conn.query(f"SELECT symbol, adet, maliyet FROM public.arni_sanal_portfoy WHERE user_id = '{uid}'", ttl=0)
+            return df if not df.empty else pd.DataFrame(columns=['symbol', 'adet', 'maliyet'])
+        except Exception:
+            return pd.DataFrame(columns=['symbol', 'adet', 'maliyet'])
+
+
+
 def T(tr, en):
     return en if st.session_state.get("arni_lang", "TR") == "EN" else tr
+
+# =========================================================
+# SANAL AL-SAT EKRAN ARAYÜZÜ VE PORTFÖY TABLOSU
+# =========================================================
+if st.session_state.arni_logged_in:
+    st.markdown("---")
+    st.markdown(f'<div class="arni-watch-title">🎮 {T("Sanal Al-Sat Deneme Paneli", "Paper Trading Simulation")}</div>', unsafe_allow_html=True)
+    
+    uid = st.session_state.arni_user_id
+    mevcut_bakiye = sanal_cuzdan_getir(uid)
+    portfoy_df = sanal_portfoy_getir(uid)
+    
+    c_sanal1, c_sanal2 = st.columns()
+    with c_sanal1:
+        st.metric(label=T("💵 Sanal Nakit Bakiye", "💵 Virtual Cash Balance"), value=f"{mevcut_bakiye:,.2f} TL")
+        
+        islem_tipi = st.radio(T("İşlem Tipi", "Transaction Type"), [T("AL", "BUY"), T("SAT", "SELL")], horizontal=True, key="sanal_islem_tipi")
+        hisse_kod = st.text_input(T("Hisse Kodu (Örn: THYAO)", "Stock Code"), value="THYAO", key="sanal_hisse_kod").upper().strip()
+        hisse_adet = st.number_input(T("Adet / Lot", "Quantity"), min_value=1, value=10, step=1, key="sanal_hisse_adet")
+        
+        if st.button(T("🚀 İşlemi Onayla", "🚀 Confirm Trade"), type="primary", use_container_width=True, key="sanal_onay_btn"):
+            try:
+                ticker = yf.Ticker(f"{hisse_kod}.IS")
+                anlik_fiyat = float(ticker.history(period="1d")['Close'].iloc[-1])
+                toplam_tutar = hisse_adet * anlik_fiyat
+                
+                if islem_tipi in [T("AL", "BUY"), "AL", "BUY"]:
+                    if toplam_tutar > mevcut_bakiye:
+                        st.error(T("🚨 Yetersiz sanal bakiye!", "🚨 Insufficient virtual balance!"))
+                    else:
+                        yeni_bakiye = mevcut_bakiye - toplam_tutar
+                        with conn.session as session:
+                            session.execute(f"UPDATE public.arni_sanal_cuzdan SET bakiye = {yeni_bakiye} WHERE user_id = '{uid}'")
+                            session.execute(f"""
+                                INSERT INTO public.arni_sanal_portfoy (user_id, symbol, adet, maliyet) 
+                                VALUES ('{uid}', '{hisse_kod}', {hisse_adet}, {anlik_fiyat})
+                                ON CONFLICT (user_id, symbol) DO UPDATE SET 
+                                maliyet = ((public.arni_sanal_portfoy.maliyet * public.arni_sanal_portfoy.adet) + ({toplam_tutar})) / (public.arni_sanal_portfoy.adet + {hisse_adet}),
+                                adet = public.arni_sanal_portfoy.adet + {hisse_adet}
+                            """)
+                            session.commit()
+                        st.success(f"🎉 {hisse_adet} lot {hisse_kod}, {anlik_fiyat:.2f} TL fiyattan sanal portföye eklendi!")
+                        st.rerun()
+                        
+                elif islem_tipi in [T("SAT", "SELL"), "SAT", "SELL"]:
+                    if portfoy_df.empty:
+                        st.error(T("🚨 Portföyünüzde hiç hisse bulunmuyor!", "🚨 Your portfolio is empty!"))
+                    else:
+                        hisse_kontrol = portfoy_df[portfoy_df['symbol'] == hisse_kod]
+                        if hisse_kontrol.empty or float(hisse_kontrol.iloc['adet']) < hisse_adet:
+                            st.error(T("🚨 Portföyünüzde yeterli adet bulunmuyor!", "🚨 Insufficient shares in portfolio!"))
+                        else:
+                            yeni_bakiye = mevcut_bakiye + toplam_tutar
+                            mevcut_adet = float(hisse_kontrol.iloc['adet'])
+                            with conn.session as session:
+                                session.execute(f"UPDATE public.arni_sanal_cuzdan SET bakiye = {yeni_bakiye} WHERE user_id = '{uid}'")
+                                if mevcut_adet == hisse_adet:
+                                    session.execute(f"DELETE FROM public.arni_sanal_portfoy WHERE user_id = '{uid}' AND symbol = '{hisse_kod}'")
+                                else:
+                                    session.execute(f"UPDATE public.arni_sanal_portfoy SET adet = adet - {hisse_adet} WHERE user_id = '{uid}' AND symbol = '{hisse_kod}'")
+                                session.commit()
+                            st.success(f"🎉 {hisse_adet} lot {hisse_kod}, {anlik_fiyat:.2f} TL fiyattan sanal olarak satıldı!")
+                            st.rerun()
+            except Exception:
+                st.error(T("🚨 Hisse fiyatı alınamadı! Lütfen kodu doğru girdiğinizden emin olun (Örn: ASELS).", "🚨 Failed to fetch stock price."))
+                
+    with c_sanal2:
+        st.markdown(f"**💼 {T('Mevcut Sanal Portföy Durumunuz', 'Your Virtual Portfolio Status')}**")
+        if portfoy_df.empty:
+            st.info(T("Henüz sanal alım-satım işleminiz bulunmuyor. Sol taraftan ilk denemenizi yapabilirsiniz!", "No virtual trades yet."))
+        else:
+            st.dataframe(portfoy_df, hide_index=True, use_container_width=True)
+
 
 def signal_text(sinyal):
     if st.session_state.get("arni_lang", "TR") != "EN":
