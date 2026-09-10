@@ -5,6 +5,12 @@ import numpy as np
 import re
 import base64
 import hmac
+import hashlib
+import secrets
+import sqlite3
+import json
+import os
+from pathlib import Path
 import uuid
 
 st.set_page_config(page_title="ARNI", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
@@ -18,10 +24,6 @@ try:
 except Exception:
     conn = None
 
-# Kayıtlı kullanıcıları ve şifrelerini dinamik olarak tutar
-if "registered_users" not in st.session_state:
-    st.session_state.registered_users = {"ARNI": "2010"}  # Varsayılan yönetici hesabı
-
 # Aktif oturum durum takibi
 if "arni_logged_in" not in st.session_state:
     st.session_state.arni_logged_in = False
@@ -30,21 +32,9 @@ if "arni_username" not in st.session_state:
     st.session_state.arni_username = ""
 
 if "arni_user_id" not in st.session_state:
-    st.session_state.arni_user_id = ""
+st.session_state.arni_user_id = ""
 
-# =========================================================
-# ARNI DİL SİSTEMİ / LANGUAGE SYSTEM
-# =========================================================
-
-
-
-st.set_page_config(page_title="ARNI", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
-
-# =========================================================
-# ARNI DİL SİSTEMİ / LANGUAGE SYSTEM
-# Analiz motoru aynı kalır; yalnızca kullanıcı arayüzü çevrilir.
-# =========================================================
-st.session_state.setdefault("arni_lang", "TR")
+# ARNI DİL SİSTEMİ
 
 def T(tr, en):
     return en if st.session_state.get("arni_lang", "TR") == "EN" else tr
@@ -65,7 +55,8 @@ def smart_money_text(value):
     return {
         "GÜÇLÜ GİRİŞ": "STRONG INFLOW",
         "POZİTİF": "POSITIVE",
-        "NÖTR": "NEUTRAL",
+        "KARIŞIK": "MIXED",
+        "VERİ ZAYIF": "WEAK DATA",
         "ZAYIF": "WEAK",
         "GÜÇLÜ ÇIKIŞ": "STRONG OUTFLOW",
     }.get(value, value)
