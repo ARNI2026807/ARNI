@@ -29,10 +29,15 @@ if "arni_logged_in" not in st.session_state:
     st.session_state.arni_logged_in = False
 
 if "arni_username" not in st.session_state:
+if "arni_logged_in" not in st.session_state:
+    st.session_state.arni_logged_in = False
+
+if "arni_username" not in st.session_state:
     st.session_state.arni_username = ""
 
 if "arni_user_id" not in st.session_state:
-st.session_state.arni_user_id = ""
+    st.session_state.arni_user_id = ""
+
 
 # ARNI DİL SİSTEMİ
 
